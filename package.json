@@ -1,0 +1,27 @@
+{
+  "name": "universal-portability",
+    "version": "1.0.0",
+    "main": "dist/index.js",
+    "module": "dist/index.js",
+    "types": "dist/index.d.ts",
+    "files": [
+      "dist"
+    ],
+    "scripts": {
+      "build": "rollup -c",
+      "prepare": "npm run build"
+    },
+    "keywords": [],
+    "author": "",
+    "license": "ISC",
+    "peerDependencies": {
+      "react": ">=16.8.0",
+      "react-dom": ">=16.8.0",
+      "wagmi": ">=1.0.0",
+      "viem": ">=1.0.0"
+    },
+    "publishConfig": {
+      "access": "public"
+    }
+  }
+  
