@@ -1,29 +1,20 @@
 import React, { useEffect, useCallback, useRef } from 'react';
 import { useAccount, usePublicClient } from 'wagmi';
 import { useAutoConnect } from '../hooks/useAutoConnect';
-import { sendPortabilityMessage, createTransactionMessage } from '../utils/postMessage';
-import type { PortabilityMessage } from '../utils/messageTypes';
+import { sendPortabilityMessage } from '../utils/postMessage';
+import type { PortabilityMessage, RPCRequest } from '../utils/messageTypes';
 
 interface PortabilityProviderProps {
   children: React.ReactNode;
-  onMessageReceived?: (message: PortabilityMessage) => void;
+  onError?: (error: Error) => void;
 }
 
 export const PortabilityProvider: React.FC<PortabilityProviderProps> = ({ 
-  children, 
-  onMessageReceived 
+  children,
+  onError 
 }) => {
-  const { address, isConnected } = useAccount();
+  const { address, isConnected, chain } = useAccount();
   const publicClient = usePublicClient();
-
-
-  if (!publicClient) {
-    console.error(
-      'PortabilityProvider requires a publicClient from wagmi. Please ensure it is properly configured.'
-    )
-    
-    return;
-  }
 
   //@ts-ignore
   const originalRequestRef = useRef(publicClient.request);
@@ -31,76 +22,111 @@ export const PortabilityProvider: React.FC<PortabilityProviderProps> = ({
   // Auto-connect functionality
   useAutoConnect();
 
-  // Notify parent about successful connection
+  // Handle connection status changes
   useEffect(() => {
     if (isConnected && address) {
       sendPortabilityMessage({
         type: 'CONNECT_SUCCESS',
-        payload: { address },
+        payload: { 
+          address,
+          chainId: chain?.id,
+          chainName: chain?.name
+        },
         id: Math.random().toString(36).substr(2, 9)
       });
     }
-  }, [isConnected, address]);
+  }, [isConnected, address, chain]);
 
-  // Handle incoming messages
-  const handleMessage = useCallback((event: MessageEvent) => {
-    try {
-      const message = event.data as PortabilityMessage;
-      if (message && message.type) {
-        onMessageReceived?.(message);
-      }
-    } catch (error) {
-      console.error('Error handling message:', error);
+  // Handle chain changes
+  useEffect(() => {
+    if (chain) {
+      sendPortabilityMessage({
+        type: 'CHAIN_CHANGED',
+        payload: { 
+          chainId: chain.id,
+          chainName: chain.name
+        },
+        id: Math.random().toString(36).substr(2, 9)
+      });
     }
-  }, [onMessageReceived]);
+  }, [chain]);
 
-  // Set up message listener
+  // Intercept and observe RPC requests
   useEffect(() => {
-    window.addEventListener('message', handleMessage);
-    return () => window.removeEventListener('message', handleMessage);
-  }, [handleMessage]);
+    if (!publicClient) return;
 
-  // Intercept and observe transactions
-  useEffect(() => {
     const originalSend = originalRequestRef.current;
-
-    if (!publicClient) {
-      console.error(
-        'PortabilityProvider requires a publicClient from wagmi. Please ensure it is properly configured.'
-      )
-      
-      return;
-    }
-
+    
     //@ts-ignore
-    publicClient.request = async (args: any) => {
+    publicClient.request = async (args: RPCRequest) => {
       try {
-        if (args.method === 'eth_sendTransaction') {
-          // Notify about transaction initiation
-          sendPortabilityMessage(createTransactionMessage(args.params, 'TRANSACTION_INITIATED'));
-          
-          // Process the actual transaction
-          const result = await originalSend(args);
-          
-          // Notify about signed transaction
-          sendPortabilityMessage(createTransactionMessage([{
-            ...args.params[0],
-            hash: result
-          }], 'TRANSACTION_SIGNED'));
-          
-          return result;
+        // Notify about the RPC request
+        sendPortabilityMessage({
+          type: 'RPC_REQUEST',
+          payload: args,
+          id: Math.random().toString(36).substr(2, 9)
+        });
+
+        // Process the actual request
+        //@ts-ignore
+        const result = await originalSend(args);
+
+        // Special handling for specific methods
+        switch (args.method) {
+          case 'eth_sendTransaction':
+            sendPortabilityMessage({
+              type: 'TRANSACTION_INITIATED',
+              payload: {
+                params: args.params,
+                result
+              },
+              id: Math.random().toString(36).substr(2, 9)
+            });
+            break;
+
+          case 'eth_sign':
+          case 'personal_sign':
+          case 'eth_signTypedData':
+          case 'eth_signTypedData_v4':
+            sendPortabilityMessage({
+              type: 'SIGNATURE_REQUEST',
+              payload: {
+                method: args.method,
+                params: args.params,
+                result
+              },
+              id: Math.random().toString(36).substr(2, 9)
+            });
+            break;
         }
-        return originalSend(args);
+
+        // Notify about the RPC response
+        sendPortabilityMessage({
+          type: 'RPC_RESPONSE',
+          payload: { request: args, response: result },
+          id: Math.random().toString(36).substr(2, 9)
+        });
+
+        return result;
       } catch (error) {
-        console.error('Transaction error:', error);
-        throw error;
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        
+        sendPortabilityMessage({
+          type: 'RPC_RESPONSE',
+          payload: { request: args },
+          error: errorMessage,
+          id: Math.random().toString(36).substr(2, 9)
+        });
+
+        onError?.(error instanceof Error ? error : new Error(errorMessage));
+        throw error; // Re-throw to maintain normal error flow
       }
     };
 
     return () => {
       publicClient.request = originalSend;
     };
-  }, [publicClient]);
+  }, [publicClient, onError]);
 
   return <>{children}</>;
 };

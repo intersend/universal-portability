@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { useConnect } from 'wagmi';
 
-const AUTOCONNECTED_CONNECTOR_IDS = ['walletConnect', 'safe'];
+const AUTOCONNECTED_CONNECTOR_IDS = ['safe'];
 
 export const useAutoConnect = () => {
   const { connect, connectors } = useConnect();
