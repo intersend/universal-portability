@@ -8,7 +8,11 @@ export type MessageType =
   | 'RPC_REQUEST'
   | 'RPC_RESPONSE'
   | 'CHAIN_CHANGED'
-  | 'ACCOUNT_CHANGED';
+  | 'ACCOUNT_CHANGED'
+  | 'REQUEST_WALLET_INFO'
+  | 'WALLET_INFO'
+  | 'RPC_REQUEST'
+  | 'RPC_RESPONSE';
 
 export interface PortabilityMessage {
   type: MessageType;

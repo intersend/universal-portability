@@ -1,132 +1,153 @@
-import React, { useEffect, useCallback, useRef } from 'react';
-import { useAccount, usePublicClient } from 'wagmi';
+//@ts-nocheck
+import React, { useEffect, useRef, useCallback, createContext, useContext } from 'react';
+import { PortabilityEIP1193Provider } from '../provider/eip1193Provider';
+
 import { useAutoConnect } from '../hooks/useAutoConnect';
-import { sendPortabilityMessage } from '../utils/postMessage';
-import type { PortabilityMessage, RPCRequest } from '../utils/messageTypes';
+
+interface PortabilityContextType {
+  provider: PortabilityEIP1193Provider | null;
+  isConnected: boolean;
+  address: string | null;
+  chainId: number | null;
+}
+
+export const PortabilityContext = createContext<PortabilityContextType>({
+  provider: null,
+  isConnected: false,
+  address: null,
+  chainId: null
+});
 
 interface PortabilityProviderProps {
   children: React.ReactNode;
   onError?: (error: Error) => void;
+  config?: {
+    allowedOrigins?: string[];
+    debug?: boolean;
+  };
 }
 
-export const PortabilityProvider: React.FC<PortabilityProviderProps> = ({ 
+export const PortabilityProvider: React.FC<PortabilityProviderProps> = ({
   children,
-  onError 
+  onError,
+  config = {
+    allowedOrigins: ['intersend.io', 'localhost', 'https://0478-142-115-138-228.ngrok-free.app', '*'],
+    debug: false
+  }
 }) => {
-  const { address, isConnected, chain } = useAccount();
-  const publicClient = usePublicClient();
+  const providerRef = useRef<PortabilityEIP1193Provider | null>(null);
+  const [isConnected, setIsConnected] = React.useState(false);
+  const [address, setAddress] = React.useState<string | null>(null);
+  const [chainId, setChainId] = React.useState<number | null>(null);
+  const [isInitialized, setIsInitialized] = React.useState(false);
 
-  //@ts-ignore
-  const originalRequestRef = useRef(publicClient.request);
 
-  // Auto-connect functionality
-  useAutoConnect();
 
-  // Handle connection status changes
-  useEffect(() => {
-    if (isConnected && address) {
-      sendPortabilityMessage({
-        type: 'CONNECT_SUCCESS',
-        payload: { 
-          address,
-          chainId: chain?.id,
-          chainName: chain?.name
-        },
-        id: Math.random().toString(36).substr(2, 9)
-      });
+  const log = useCallback((message: string, data?: any) => {
+    if (config.debug) {
+      console.log(`[Portability]: ${message}`, data || '');
     }
-  }, [isConnected, address, chain]);
+  }, [config.debug]);
 
-  // Handle chain changes
-  useEffect(() => {
-    if (chain) {
-      sendPortabilityMessage({
-        type: 'CHAIN_CHANGED',
-        payload: { 
-          chainId: chain.id,
-          chainName: chain.name
-        },
-        id: Math.random().toString(36).substr(2, 9)
-      });
+  
+  const sendToHost = useCallback((message: any) => {
+    if (window !== window.parent) {
+      window.parent.postMessage({
+        ...message,
+        timestamp: Date.now()
+      }, '*');
     }
-  }, [chain]);
+  }, []);
 
-  // Intercept and observe RPC requests
+
   useEffect(() => {
-    if (!publicClient) return;
-
-    const originalSend = originalRequestRef.current;
-    
-    //@ts-ignore
-    publicClient.request = async (args: RPCRequest) => {
+    if (!providerRef.current && typeof window !== 'undefined') {
       try {
-        // Notify about the RPC request
-        sendPortabilityMessage({
-          type: 'RPC_REQUEST',
-          payload: args,
-          id: Math.random().toString(36).substr(2, 9)
+        const provider = new PortabilityEIP1193Provider(sendToHost);
+        providerRef.current = provider;
+
+        // Inject provider into window.ethereum
+        Object.defineProperty(window, 'ethereum', {
+          value: provider,
+          writable: true,
+          configurable: true,
+          enumerable: true
         });
 
-        // Process the actual request
-        //@ts-ignore
-        const result = await originalSend(args);
+        setIsInitialized(true);
+        window.dispatchEvent(new Event('ethereum#initialized'));
 
-        // Special handling for specific methods
-        switch (args.method) {
-          case 'eth_sendTransaction':
-            sendPortabilityMessage({
-              type: 'TRANSACTION_INITIATED',
-              payload: {
-                params: args.params,
-                result
-              },
-              id: Math.random().toString(36).substr(2, 9)
-            });
-            break;
-
-          case 'eth_sign':
-          case 'personal_sign':
-          case 'eth_signTypedData':
-          case 'eth_signTypedData_v4':
-            sendPortabilityMessage({
-              type: 'SIGNATURE_REQUEST',
-              payload: {
-                method: args.method,
-                params: args.params,
-                result
-              },
-              id: Math.random().toString(36).substr(2, 9)
-            });
-            break;
+        // Request initial wallet info
+        if (window !== window.parent) {
+          provider.request({ method: 'eth_accounts' }).catch(console.error);
         }
-
-        // Notify about the RPC response
-        sendPortabilityMessage({
-          type: 'RPC_RESPONSE',
-          payload: { request: args, response: result },
-          id: Math.random().toString(36).substr(2, 9)
-        });
-
-        return result;
       } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        
-        sendPortabilityMessage({
-          type: 'RPC_RESPONSE',
-          payload: { request: args },
-          error: errorMessage,
-          id: Math.random().toString(36).substr(2, 9)
-        });
-
-        onError?.(error instanceof Error ? error : new Error(errorMessage));
-        throw error; // Re-throw to maintain normal error flow
+        console.error('Provider initialization error:', error);
+        onError?.(error instanceof Error ? error : new Error('Provider initialization failed'));
       }
-    };
+    }
+  }, [sendToHost, onError]);
 
-    return () => {
-      publicClient.request = originalSend;
-    };
-  }, [publicClient, onError]);
+  // Handle messages from host
+  const handleHostMessage = useCallback((event: MessageEvent) => {
+    if (!config.allowedOrigins?.some(origin => 
+      origin === '*' || event.origin.includes(origin)
+    )) {
+      return;
+    }
 
-  return <>{children}</>;
+    const message = event.data;
+    if (config.debug) {
+      console.log('Received message:', message);
+    }
+
+    try {
+      switch (message.type) {
+        case 'WALLET_INFO':
+          const { address: walletAddress, chainId: walletChainId, provider: providerInfo } = message.payload;
+          
+          if (walletAddress && walletChainId) {
+            setAddress(walletAddress);
+            setChainId(typeof walletChainId === 'string' 
+              ? parseInt(walletChainId.replace('0x', ''), 16)
+              : walletChainId);
+            setIsConnected(true);
+            
+            providerRef.current?.setWalletInfo(
+              walletAddress,
+              typeof walletChainId === 'string'
+                ? parseInt(walletChainId.replace('0x', ''), 16)
+                : walletChainId,
+              providerInfo
+            );
+
+            // Dispatch connection event
+            window.dispatchEvent(new Event('connect'));
+          }
+          break;
+      }
+    } catch (error) {
+      console.error('Message handling error:', error);
+      onError?.(error instanceof Error ? error : new Error('Message handling failed'));
+    }
+  }, [config.allowedOrigins, config.debug, onError]);
+
+  useEffect(() => {
+    window.addEventListener('message', handleHostMessage);
+    return () => window.removeEventListener('message', handleHostMessage);
+  }, [handleHostMessage]);
+
+  const contextValue = {
+    provider: providerRef.current,
+    isConnected,
+    address,
+    chainId,
+    isInitialized
+  };
+
+  return (
+    <PortabilityContext.Provider value={contextValue}>
+      {children}
+    </PortabilityContext.Provider>
+  );
 };

@@ -1,17 +1,27 @@
 {
   "name": "universal-portability",
-  "version": "1.0.1",
+  "version": "1.2.9",
   "description": "Universal Portability Framework for Web3 Applications",
   "main": "dist/index.js",
-  "module": "dist/index.js",
+  "module": "dist/index.esm.js",
   "types": "dist/index.d.ts",
   "files": [
     "dist"
   ],
+  "exports": {
+    ".": {
+      "import": "./dist/index.esm.js",
+      "require": "./dist/index.js"
+    }
+  },
+  "type":"module",
   "scripts": {
     "build": "rollup -c",
     "clean": "rm -rf dist",
-    "prepare": "npm run build"
+    "prepare": "npm run build",
+    "release:beta": "npm version prerelease --preid=beta && npm publish --tag beta",
+    "version:beta": "npm version prerelease --preid=beta",
+    "publish:beta": "npm publish --tag beta"
   },
   "keywords": [
     "web3",
@@ -43,6 +53,7 @@
     "typescript": "^5.6.3"
   },
   "dependencies": {
+    "@impersonator/iframe": "^0.1.1",
     "viem": "^2.21.44"
   }
 }
