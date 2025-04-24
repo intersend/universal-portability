@@ -26,6 +26,11 @@ export interface BasePayload {
   chainId: number;
 }
 
+export interface WalletInfoPayload extends BasePayload {
+  address: string;
+  isConnected: boolean;
+}
+
 export interface TransactionPayload extends BasePayload {
   to: string;
   value: string;

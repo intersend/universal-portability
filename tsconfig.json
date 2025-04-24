@@ -3,10 +3,11 @@
   "compilerOptions": {
     "target": "es5",
     "module": "esnext",
-    "lib": ["dom", "esnext"],
+    "lib": ["dom", "esnext", "es2017"],
     "jsx": "react",
     "declaration": true,
     "declarationDir": "dist",
+    "declarationMap": true,
     "strict": true,
     "moduleResolution": "node",
     "allowSyntheticDefaultImports": true,

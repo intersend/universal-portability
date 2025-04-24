@@ -11,8 +11,12 @@ export type MessageType =
   | 'ACCOUNT_CHANGED'
   | 'REQUEST_WALLET_INFO'
   | 'WALLET_INFO'
-  | 'RPC_REQUEST'
-  | 'RPC_RESPONSE';
+  | 'INTERSPACE_CONNECT_REQUEST'
+  | 'INTERSPACE_CONNECT_RESPONSE'
+  | 'SIGN_MESSAGE_REQUEST'
+  | 'TRANSACTION_REQUEST'
+  | 'SWITCH_CHAIN_REQUEST'
+  | 'WALLET_WEBVIEW_READY';
 
 export interface PortabilityMessage {
   type: MessageType;

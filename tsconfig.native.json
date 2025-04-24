@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "declaration": true,
+    "declarationDir": "./dist",
+    "declarationMap": true,
+    "outDir": "./dist",
+    "rootDir": "./src"
+  },
+  "include": ["src/native/**/*", "src/types/**/*", "src/utils/messageTypes.ts"],
+  "exclude": ["node_modules", "dist"]
+}

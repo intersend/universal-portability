@@ -1,11 +1,11 @@
 import { PortabilityMessage, TransactionPayload } from './messageTypes';
+import { postMessageSafe } from './platform';
 
-export const sendPortabilityMessage = (message: PortabilityMessage) => {
-  try {
-    window.parent.postMessage(message, '*');
-  } catch (error) {
-    console.error('Failed to send postMessage:', error);
-  }
+export const sendPortabilityMessage = (
+  message: PortabilityMessage, 
+  webViewRef?: React.RefObject<any>
+) => {
+  postMessageSafe(message, '*', webViewRef);
 };
 
 export const createTransactionMessage = (
